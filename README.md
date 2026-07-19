@@ -1,4 +1,6 @@
 # PDFWebsiteDownloader
+## IDE Setup
+VS Code Version: 1.129.0 is the used IDE to develop this tool, if you encounter any error, check your IDE version first
 ## Installation
 ### macOS
 Clone Git Repository:
