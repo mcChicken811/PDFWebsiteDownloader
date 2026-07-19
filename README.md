@@ -15,6 +15,7 @@ cd PDFWebsiteDownloader
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+playwright install
 ```
 
 ## Basic Guide
@@ -25,12 +26,12 @@ To crawl the website from a given root url, make a LinkCrawler instance and give
 crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=0)
 ```
 
-To save the found urls in to a text file, use:
+To save the found urls in to a text file, use: (which provides the path to the text file you want to save to)
 ```Python
 crawler.save_found_urls_to("output/example/urls.txt")
 ```
 
-To save the found urls into pdf files in the chosen directory use:
+To save the found urls into pdf files in the chosen directory use: (which provides the directory which you want to save all the pdfs each representing one webpage to)
 ```Python
 crawler.save_url_to_pdfs("output/example")
 ```
