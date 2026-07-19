@@ -1,43 +1,24 @@
 from typing import Callable
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 import requests
-from pathlib import PurePosixPath, Path
-from multi_thread_web_pdf_saver import MultiThreadWebPDFSaver
 from recur_thread_pool_executor import RecurThreadPoolExecutor
 import threading
+from url_util import URLUtil
 
 class LinkCrawler:
     # max_depth = 0 symbolise only crawling the root url, 1 symbolise crawling root url and url found in root url
-    def __init__(self, root_url: str, ft: Callable[[str], bool] = lambda url: True, max_depth: int = 0, default_header={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/138.0.0.0 Safari/537.36"
-            )
-        }, max_workers=30):
-        self._root_url = self.formalise_url(root_url)
-        self._host = urlparse(self._root_url).netloc
+    def __init__(self, root_url: str, ft: Callable[[str], bool] = lambda url: True, max_depth: int = 0, default_header=URLUtil.fake_request_header, max_workers=30):
+        self._root_url = URLUtil.formalise_url(root_url)
+        self._host = URLUtil.get_url_host(self._root_url)
         self._filter = ft
         self._max_depth = max_depth
         self._default_header = default_header
-        self.HTML_EXTENTIONS = {
-            "",
-            ".html",
-            ".htm",
-            ".xhtml",
-            ".php",
-            ".asp",
-            ".aspx",
-            ".jsp",
-            ".cgi",
-        }
+
         if not self._host:
             raise ValueError("root_url has no host, root_url must be the full url including host")
         self._found_urls: set[str] = set()
         self._bad_respond_urls: set[str] = set()
-
-        self._PDF_saver = MultiThreadWebPDFSaver()
 
         # starts crawling 
         self._executor = RecurThreadPoolExecutor(max_workers)
@@ -57,22 +38,11 @@ class LinkCrawler:
         print(f"Finished crawling from root: {self._root_url}, success: {num_of_success_urls}, failed: {num_of_failed_urls}, total(found): {num_of_found_urls}")
 
         self._found_urls = self._found_urls - self._bad_respond_urls
-        
-    def save_url_to_pdfs(self, save_dir: str=""):
-        with self._PDF_saver as saver:
-            for url in self._found_urls:
-                saver.request_save(url, self.get_pdf_save_path_from_url(url, save_dir))
 
-    def get_pdf_save_path_from_url(self, url, save_dir):
-        url_path = urlparse(url).path
-
-        if url_path.lstrip("/") == "":
-            url_path = "index.html"
-        dir_path = (str(PurePosixPath(url_path).parent / PurePosixPath(url_path).stem) + ".pdf").lstrip("/")
-
-        path = str(Path(save_dir) / dir_path)
-        return path
-
+    @property
+    def result(self) -> set[str]:
+        return self._found_urls
+    
     # assuming the given url is an html, crawl all the hyperlinks of the html
     # that is in the root url host if the url is not already in the _found_urls
     def crawl_html_url(self, url: str, depth: int):
@@ -107,16 +77,6 @@ class LinkCrawler:
                 self._bad_respond_urls.add(url)
             print(f"Failed crawling url: {url}, respond is not text/html or respond failed, skipping")
 
-
-        
-
-    def save_found_urls_to(self, path: str):
-        print(f"Saving found urls to: {path}")
-        sorted_urls = sorted(self._found_urls)
-        with open(path, "w", encoding="utf-8") as file:
-            for url in sorted_urls:
-                file.write(url + "\n")
-
     # note LinkCrawler always filter the link to only links in the host 
     # and such filter cannot be override by passing predicates to the filter argument
     # and note LinkCrawler only collects html pages
@@ -128,43 +88,16 @@ class LinkCrawler:
         for a in soup.find_all("a", href=True):
             href: str = str(a["href"])
 
+            if not URLUtil.is_url_vaild(href):
+                continue
 
             # url has no host (assume it is relative URL and thus gave it the root_url origin)
-            if not urlparse(href).netloc:
+            if not URLUtil.get_url_host(href):
                 href = urljoin(url, href)
-
             
-            # discard url with different host
-            if not self._is_URL_from_root_host(href):
+            if not (URLUtil.is_URL_host(href, self._host) and URLUtil.is_url_html_file(href) and self._filter(href)):
                 continue
 
-            if not self._is_url_html_file(href):
-                continue
-
-            
-
-            if not self._filter(href):
-                continue
-
-            hrefs.add(self.formalise_url(href))
+            hrefs.add(URLUtil.formalise_url(href))
 
         return hrefs
-
-    # make the url in the standard format that only includes scheme, netloc and path
-    def formalise_url(self, url: str):
-        url_data = urlparse(url)
-        return url_data.scheme + "://" + url_data.netloc + "/" + url_data.path.lstrip("/")
-        
-     # return if the given URL follows the same host as the root url
-    def _is_URL_from_root_host(self, url: str) -> bool:
-        return urlparse(url).netloc == self._host
-
-
-    def _is_url_html_file(self, url: str) -> bool:
-        path = urlparse(url).path
-        suffix = PurePosixPath(path).suffix
-        return suffix in self.HTML_EXTENTIONS
-
-
-
-    

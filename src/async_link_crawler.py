@@ -1,47 +1,29 @@
 from typing import Callable
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-import requests
-from pathlib import PurePosixPath, Path
-from multi_thread_web_pdf_saver import MultiThreadWebPDFSaver
+from urllib.parse import urljoin
 import asyncio
-import httpx
+from async_timed_lock import AsyncTimedLock
+from async_http_fetcher import AsyncHttpFetcher
+from url_util import URLUtil
 
 
 class AsyncLinkCrawler:
     # max_depth = 0 symbolise only crawling the root url, 1 symbolise crawling root url and url found in root url
     # max_async_crawling_tasks is the maximum number of crawl processes to run asynchronously at a time
-    def __init__(self, root_url: str, ft: Callable[[str], bool] = lambda url: True, max_depth: int = 0, default_header={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/138.0.0.0 Safari/537.36"
-            )
-        }, max_async_crawling_tasks=100):
-        self._root_url = self.formalise_url(root_url)
-        self._host = urlparse(self._root_url).netloc
+    def __init__(self, root_url: str, ft: Callable[[str], bool] = lambda url: True, max_depth: int = 0, default_header=URLUtil.fake_request_header, max_async_crawling_tasks=100):
+        self._root_url = URLUtil.formalise_url(root_url)
+        self._host = URLUtil.get_url_host(self._root_url)
         self._filter = ft
         self._max_depth = max_depth
         self._default_header = default_header
-        self.HTML_EXTENTIONS = {
-            "",
-            ".html",
-            ".htm",
-            ".xhtml",
-            ".php",
-            ".asp",
-            ".aspx",
-            ".jsp",
-            ".cgi",
-        }
+
         if not self._host:
             raise ValueError("root_url has no host, root_url must be the full url including host")
         self._found_urls: set[str] = set()
         self._bad_respond_urls: set[str] = set()
 
-        self._PDF_saver = MultiThreadWebPDFSaver()
-
         # starts crawling
+        self._requests_lock = AsyncTimedLock()
         self.crawl_semaphore = asyncio.Semaphore(max_async_crawling_tasks)
         asyncio.run(self.start_crawling())
 
@@ -53,24 +35,13 @@ class AsyncLinkCrawler:
 
         self._found_urls = self._found_urls - self._bad_respond_urls
         
-    def save_url_to_pdfs(self, save_dir: str=""):
-        with self._PDF_saver as saver:
-            for url in self._found_urls:
-                saver.request_save(url, self.get_pdf_save_path_from_url(url, save_dir))
-
-    def get_pdf_save_path_from_url(self, url, save_dir):
-        url_path = urlparse(url).path
-
-        if url_path.lstrip("/") == "":
-            url_path = "index.html"
-        dir_path = (str(PurePosixPath(url_path).parent / PurePosixPath(url_path).stem) + ".pdf").lstrip("/")
-
-        path = str(Path(save_dir) / dir_path)
-        return path
-
+    @property
+    def result(self) -> set[str]:
+        return self._found_urls
+    
     async def start_crawling(self):
-        async with httpx.AsyncClient() as client:
-            self._client = client
+        async with AsyncHttpFetcher() as fetcher:
+            self._fetcher = fetcher
             async with asyncio.TaskGroup() as tg:
                 self._crawl_task_group = tg
                 self._found_urls.add(self._root_url)
@@ -80,13 +51,13 @@ class AsyncLinkCrawler:
     # that is in the root url host if the url is not already in the _found_urls
     async def crawl_html_url(self, url: str, depth: int):
         async with self.crawl_semaphore:
-            (final_url, response) = await self.fetch(url, headers=self._default_header)
-            if self.formalise_url(final_url) != self.formalise_url(url):
+            (final_url, response) = await self._fetcher.fetch(url, headers=self._default_header)
+            if URLUtil.formalise_url(final_url) != URLUtil.formalise_url(url):
                 self._bad_respond_urls.add(url)
                 self._found_urls.add(final_url)
                 url = final_url
 
-            if urlparse(url).netloc == self._host and response.status_code == 200 and ("text/html" in response.headers.get("Content-Type", "")):
+            if URLUtil.is_URL_host(url, self._host) and response.status_code == 200 and ("text/html" in response.headers.get("Content-Type", "")):
 
                 # discontinue when the depth reaches the max_depth meaning leaf is reached
                 if depth >= self._max_depth:
@@ -114,27 +85,6 @@ class AsyncLinkCrawler:
                 self._bad_respond_urls.add(url)
                 print(f"Failed crawling url: {url}, respond is not text/html or respond failed or website relocated to different host, skipping, code: {response.status_code}")
 
-    # if 301 status code respond, re-fetch
-    # return the final url and response
-    async def fetch(self, url, headers, max_request_times=3):
-        response = None
-        for _ in range(max_request_times):
-            response = await self._client.get(url, headers=headers, timeout=30.0)
-
-            if response.status_code != 301:
-                break
-            else:
-                url = urljoin(url,response.headers.get("Location", ""))
-
-        return (url, response)
-
-    def save_found_urls_to(self, path: str):
-        print(f"Saving found urls to: {path}")
-        sorted_urls = sorted(self._found_urls)
-        with open(path, "w", encoding="utf-8") as file:
-            for url in sorted_urls:
-                file.write(url + "\n")
-
     # note LinkCrawler always filter the link to only links in the host 
     # and such filter cannot be override by passing predicates to the filter argument
     # and note LinkCrawler only collects html pages
@@ -147,47 +97,16 @@ class AsyncLinkCrawler:
             href: str = str(a["href"])
 
             # verify that href is valid url:
-            try:
-                urlparse(href)
-            except:
+            if not URLUtil.is_url_vaild(href):
                 continue
 
             # url has no host (assume it is relative URL and thus gave it the root_url origin)
-            if not urlparse(href).netloc:
+            if not URLUtil.get_url_host(href):
                 href = urljoin(url, href)
-
             
-            # discard url with different host
-            if not self._is_URL_from_root_host(href):
+            if not (URLUtil.is_URL_host(href, self._host) and URLUtil.is_url_html_file(href) and self._filter(href)):
                 continue
 
-            if not self._is_url_html_file(href):
-                continue
-
-            
-
-            if not self._filter(href):
-                continue
-
-            hrefs.add(self.formalise_url(href))
+            hrefs.add(URLUtil.formalise_url(href))
 
         return hrefs
-
-    # make the url in the standard format that only includes scheme, netloc and path
-    def formalise_url(self, url: str):
-        url_data = urlparse(url)
-        return url_data.scheme + "://" + url_data.netloc + "/" + url_data.path.lstrip("/")
-        
-     # return if the given URL follows the same host as the root url
-    def _is_URL_from_root_host(self, url: str) -> bool:
-        return urlparse(url).netloc == self._host
-
-
-    def _is_url_html_file(self, url: str) -> bool:
-        path = urlparse(url).path
-        suffix = PurePosixPath(path).suffix
-        return suffix in self.HTML_EXTENTIONS
-
-
-
-    
