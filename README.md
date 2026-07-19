@@ -53,10 +53,11 @@ To crawl the website from a given root url, make a LinkCrawler instance and give
 ```Python
 crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=1)
 ```
-Note: you can also runs the link crawler asynchronously instead of relying on multiple threads (the default LinkCrawler) which can boost performance significantly in cases where performance overhead come from waiting http responds, if you wish to do so just replace LinkCrawler with AsyncLinkCrawler as such:
+You can also runs the link crawler asynchronously instead of relying on multiple threads (the default LinkCrawler) which can boost performance significantly in cases where performance overhead come from waiting http responds, if you wish to do so just replace LinkCrawler with AsyncLinkCrawler as such:
 ```Python
 crawler: AsyncLinkCrawler = AsyncLinkCrawler("https://example.com", max_depth=1)
 ```
+Additional Note on AsyncLinkCrawler: Be cautious using this as it is so fast sometimes it might get your ip banned from accessing the website, the normal LinkCrawler was found to be fast but slow enough to not trigger those server safety warnings
 
 To save the found urls in to a text file, use: (which provides the path to the text file you want to save to)
 ```Python
