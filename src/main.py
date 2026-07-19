@@ -5,6 +5,6 @@ from link_crawler import LinkCrawler
 # and print a list of links for notebooklm to read the entire documentation
 # additional features might include filtering the links
 
-crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=0)
-crawler.save_found_urls_to("output/example/urls.txt")
-crawler.save_url_to_pdfs("output/example")
+crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=5)
+#crawler.save_found_urls_to("output/example/urls.txt")
+#crawler.save_url_to_pdfs("output/example")

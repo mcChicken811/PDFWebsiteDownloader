@@ -75,13 +75,12 @@ class LinkCrawler:
 
     # assuming the given url is an html, crawl all the hyperlinks of the html
     # that is in the root url host if the url is not already in the _found_urls
-    # the depth refers to the depth of crawling to the given url, root_url have depth 0
     def crawl_html_url(self, url: str, depth: int):
         response = requests.get(url, headers=self._default_header)
         if response.ok and ("text/html" in response.headers.get("Content-Type", "")):
 
-            # discontinue when crawl to website more than max depth from root
-            if depth > self._max_depth:
+            # discontinue when the depth reaches the max_depth meaning leaf is reached
+            if depth >= self._max_depth:
                 print(f"Success crawling leaf url: {url}")
                 return
 

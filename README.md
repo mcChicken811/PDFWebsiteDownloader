@@ -49,7 +49,7 @@ playwright install
 ## Basic Guide
 Currently the downloader does not provide user interface, all configuration must be done through python script in src/main.py (recommended, but you can use it in any python script you want)
 
-To crawl the website from a given root url, make a LinkCrawler instance and give it the root url. The max_depth parameter refers to the "maximum depth - 1" of which the crawler look for urls by travelling through hyperlinks starting from the root url
+To crawl the website from a given root url, make a LinkCrawler instance and give it the root url. The max_depth parameter refers to the maximum depth of which the crawler look for urls by travelling through hyperlinks starting from the root url
 ```Python
 crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=0)
 ```
