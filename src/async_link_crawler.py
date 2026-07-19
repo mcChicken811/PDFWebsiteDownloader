@@ -2,7 +2,6 @@ from typing import Callable
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import asyncio
-from async_timed_lock import AsyncTimedLock
 from async_http_fetcher import AsyncHttpFetcher
 from url_util import URLUtil
 
@@ -23,7 +22,6 @@ class AsyncLinkCrawler:
         self._bad_respond_urls: set[str] = set()
 
         # starts crawling
-        self._requests_lock = AsyncTimedLock()
         self.crawl_semaphore = asyncio.Semaphore(max_async_crawling_tasks)
         asyncio.run(self.start_crawling())
 

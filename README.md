@@ -75,6 +75,9 @@ To save the found urls into pdf files in the chosen directory use: (which provid
 FileUtil.save_url_to_pdfs(crawler.result, "output/example")
 ```
 
+#### Where do I save my results
+The recommended practice is for a given website say www.example.com, you should save all crawl results inside `output/example/`, for url list you can do `output/example/urls.txt` and for pdfs you can do `output/example/pdfs/` or anything in your preference, in this case if you encounter errors like path not found, just make sure you have `output/example/` as an actual directory ready before you run the saving commands
+
 ### Execute your program
 To run the downloader, simply run the python file in the virtual environment, if you use src/main.py do:
 **macOS/linux:**
