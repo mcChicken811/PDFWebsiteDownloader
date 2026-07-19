@@ -7,6 +7,6 @@ from async_link_crawler import AsyncLinkCrawler
 # additional features might include filtering the links
 
 
-crawler = AsyncLinkCrawler("https://mgs.vic.edu.au/", max_depth=3)
-crawler.save_found_urls_to("output/mgs/urls.txt")
+crawler = AsyncLinkCrawler("https://example.com", max_depth=3)
+crawler.save_found_urls_to("output/example/urls.txt")
 #crawler.save_url_to_pdfs("output/example")
