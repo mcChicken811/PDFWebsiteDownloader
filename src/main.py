@@ -1,5 +1,4 @@
 from link_crawler import LinkCrawler
-from urllib.parse import urljoin, urlparse
 
 
 # the goal is to given a root link, crawl all hyper link of the website under the domain of the root link
