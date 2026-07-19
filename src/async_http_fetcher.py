@@ -17,7 +17,7 @@ class AsyncHttpFetcher:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        pass
+        await self._client.__aexit__(exc_type, exc, tb)
 
     # if 301 status code respond, re-fetch
     # return the final url and response
