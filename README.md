@@ -14,6 +14,34 @@ Setup python virtual environment:
 cd PDFWebsiteDownloader
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+Install required packages:
+- Make sure you are in the virtual environment and then run:
+```Terminal
+pip install -r requirements.txt
+playwright install
+```
+
+### Windows
+Clone Git Repository:
+- Open a terminal in your desired folder and run the following command to clone this repository in the folder
+```Terminal
+git clone https://github.com/mcChicken811/PDFWebsiteDownloader.git
+```
+
+Setup python virtual environment:
+- In the same terminal run the following command:
+- Note: use python if you are in Windows, python3 for macOS / Linux, otherwise use whatever that works
+```Powershell
+cd PDFWebsiteDownloader
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install required packages:
+- Make sure you are in the virtual environment and then run:
+```Powershell
 pip install -r requirements.txt
 playwright install
 ```
