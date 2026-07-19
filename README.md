@@ -51,7 +51,11 @@ Currently the downloader does not provide user interface, all configuration must
 
 To crawl the website from a given root url, make a LinkCrawler instance and give it the root url. The max_depth parameter refers to the maximum depth of which the crawler look for urls by travelling through hyperlinks starting from the root url
 ```Python
-crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=0)
+crawler: LinkCrawler = LinkCrawler("https://example.com", max_depth=1)
+```
+Note: you can also runs the link crawler asynchronously instead of relying on multiple threads (the default LinkCrawler) which can boost performance significantly in cases where performance overhead come from waiting http responds, if you wish to do so just replace LinkCrawler with AsyncLinkCrawler as such:
+```Python
+crawler: AsyncLinkCrawler = AsyncLinkCrawler("https://example.com", max_depth=1)
 ```
 
 To save the found urls in to a text file, use: (which provides the path to the text file you want to save to)

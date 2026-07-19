@@ -4,18 +4,20 @@ from urllib.parse import urljoin, urlparse
 import requests
 from pathlib import PurePosixPath, Path
 from multi_thread_web_pdf_saver import MultiThreadWebPDFSaver
-from recur_thread_pool_executor import RecurThreadPoolExecutor
-import threading
+import asyncio
+import httpx
 
-class LinkCrawler:
+
+class AsyncLinkCrawler:
     # max_depth = 0 symbolise only crawling the root url, 1 symbolise crawling root url and url found in root url
+    # max_async_crawling_tasks is the maximum number of crawl processes to run asynchronously at a time
     def __init__(self, root_url: str, ft: Callable[[str], bool] = lambda url: True, max_depth: int = 0, default_header={
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/138.0.0.0 Safari/537.36"
             )
-        }, max_workers=30):
+        }, max_async_crawling_tasks=100):
         self._root_url = self.formalise_url(root_url)
         self._host = urlparse(self._root_url).netloc
         self._filter = ft
@@ -39,16 +41,9 @@ class LinkCrawler:
 
         self._PDF_saver = MultiThreadWebPDFSaver()
 
-        # starts crawling 
-        self._executor = RecurThreadPoolExecutor(max_workers)
-        self._found_urls_lock = threading.Lock()
-        self._bad_respond_urls_lock = threading.Lock()
-
-        with self._found_urls_lock:
-            self._found_urls.add(self._root_url)
-
-        self._executor.submit(self.crawl_html_url, self._root_url, 0)
-        self._executor.wait()
+        # starts crawling
+        self.crawl_semaphore = asyncio.Semaphore(max_async_crawling_tasks)
+        asyncio.run(self.start_crawling())
 
         num_of_found_urls = len(self._found_urls)
         num_of_failed_urls = len(self._bad_respond_urls)
@@ -73,42 +68,64 @@ class LinkCrawler:
         path = str(Path(save_dir) / dir_path)
         return path
 
+    async def start_crawling(self):
+        async with httpx.AsyncClient() as client:
+            self._client = client
+            async with asyncio.TaskGroup() as tg:
+                self._crawl_task_group = tg
+                self._crawl_task_group.create_task(self.crawl_html_url(self._root_url, 0))
+
     # assuming the given url is an html, crawl all the hyperlinks of the html
     # that is in the root url host if the url is not already in the _found_urls
-    def crawl_html_url(self, url: str, depth: int):
-        response = requests.get(url, headers=self._default_header)
-        if response.ok and ("text/html" in response.headers.get("Content-Type", "")):
-
-            # discontinue when the depth reaches the max_depth meaning leaf is reached
-            if depth >= self._max_depth:
-                print(f"Success crawling leaf url: {url}")
-                return
-
-            found_urls: set[str] = self._collect_html_urls_from_html(response.text, url)
-
-            total_count: int = len(found_urls)
-            count: int = 0
-            for found_url in found_urls:
-                count = count + 1
-                
-                if not found_url in self._found_urls:
-                    # add the url to found to prevent repeating crawling
-                    with self._found_urls_lock:
-                        self._found_urls.add(found_url)
-                    # submit crawling task
-                    print(f"crawling No.{count}/{total_count} found url from: {url}, URL: {found_url}")
-                    self._executor.submit(self.crawl_html_url, found_url, depth+1)
-
-            print(f"Success crawling url: {url}")
-
-        else:
-            # crawling task failed, add the url to the set of found but no respond urls
-            with self._bad_respond_urls_lock:
+    async def crawl_html_url(self, url: str, depth: int):
+        async with self.crawl_semaphore:
+            (final_url, response) = await self.fetch(url, headers=self._default_header)
+            if self.formalise_url(final_url) != self.formalise_url(url):
                 self._bad_respond_urls.add(url)
-            print(f"Failed crawling url: {url}, respond is not text/html or respond failed, skipping")
+                self._found_urls.add(final_url)
+                url = final_url
 
+            if urlparse(url).netloc == self._host and response.status_code == 200 and ("text/html" in response.headers.get("Content-Type", "")):
 
-        
+                # discontinue when the depth reaches the max_depth meaning leaf is reached
+                if depth >= self._max_depth:
+                    print(f"Success crawling leaf url: {url}")
+                    return
+
+                found_urls: set[str] = self._collect_html_urls_from_html(response.text, url)
+
+                total_count: int = len(found_urls)
+                count: int = 0
+                for found_url in found_urls:
+                    count = count + 1
+                    
+                    if not found_url in self._found_urls:
+                        # add the url to found to prevent repeating crawling
+                        
+                        # submit crawling task
+                        print(f"crawling No.{count}/{total_count} found url from: {url}, URL: {found_url}")
+                        self._found_urls.add(found_url)
+                        self._crawl_task_group.create_task(self.crawl_html_url(found_url, depth+1))
+                print(f"Success crawling url: {url}")
+
+            else:
+                # crawling task failed, add the url to the set of found but no respond urls
+                self._bad_respond_urls.add(url)
+                print(f"Failed crawling url: {url}, respond is not text/html or respond failed or website relocated to different host, skipping, code: {response.status_code}")
+
+    # if 301 status code respond, re-fetch
+    # return the final url and response
+    async def fetch(self, url, headers, max_request_times=3):
+        response = None
+        for _ in range(max_request_times):
+            response = await self._client.get(url, headers=headers, timeout=30.0)
+
+            if response.status_code != 301:
+                break
+            else:
+                url = urljoin(url,response.headers.get("Location", ""))
+
+        return (url, response)
 
     def save_found_urls_to(self, path: str):
         print(f"Saving found urls to: {path}")
@@ -128,6 +145,11 @@ class LinkCrawler:
         for a in soup.find_all("a", href=True):
             href: str = str(a["href"])
 
+            # verify that href is valid url:
+            try:
+                urlparse(href)
+            except:
+                continue
 
             # url has no host (assume it is relative URL and thus gave it the root_url origin)
             if not urlparse(href).netloc:
