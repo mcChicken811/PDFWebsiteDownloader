@@ -73,6 +73,7 @@ class AsyncLinkCrawler:
             self._client = client
             async with asyncio.TaskGroup() as tg:
                 self._crawl_task_group = tg
+                self._found_urls.add(self._root_url)
                 self._crawl_task_group.create_task(self.crawl_html_url(self._root_url, 0))
 
     # assuming the given url is an html, crawl all the hyperlinks of the html
